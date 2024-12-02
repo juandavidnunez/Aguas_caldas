@@ -1,0 +1,47 @@
+[
+    {
+        "id": 1,
+        "nombre": 1,
+        "barrio_id": 1
+    },
+    {
+        "id": 2,
+        "nombre": 2,
+        "barrio_id": 1
+    },
+    {
+        "id": 3,
+        "nombre": 3,
+        "barrio_id": 1
+    },
+    {
+        "id": 4,
+        "nombre": 4,
+        "barrio_id": 1
+    },
+    {
+        "id": 5,
+        "nombre": 5,
+        "barrio_id": 1
+    },
+    {
+        "id": 6,
+        "nombre": 6,
+        "barrio_id": 1
+    },
+    {
+        "id": 7,
+        "nombre": 7,
+        "barrio_id": 1
+    },
+    {
+        "id": 9,
+        "nombre": 9,
+        "barrio_id": 1
+    },
+    {
+        "id": 10,
+        "nombre": 10,
+        "barrio_id": 1
+    }
+]
