@@ -3,8 +3,12 @@ import logging
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
+import matplotlib.pyplot as plt
+
+import networkx as nx
 import ttkbootstrap as tb
 
+from Simulacion import Simulation
 from barrios import Barrio
 from casas import Casa
 from tanques import Tanque
@@ -279,7 +283,7 @@ class BotinApp(tb.Window):
         tanque_id = self.tanque_id_var_upd.get().strip()
 
         try:
-            with open("data/barrios.json", "r") as file:
+            with open("data/barrios/barrios.json", "r") as file:
                 barrios = json.load(file)
 
             barrio_encontrado = False
@@ -292,7 +296,7 @@ class BotinApp(tb.Window):
                         barrio["ubicacion"] = ubicacion_barrio
                     if tanque_id.isdigit():
                         barrio["tanque_id"] = int(tanque_id)
-                    with open("data/barrios.json", "w") as file:
+                    with open("data/barrios/barrios.json", "w") as file:
                         json.dump(barrios, file, indent=4)
                     messagebox.showinfo("Éxito", f"Barrio con ID {id_barrio} actualizado.")
                     break
@@ -306,12 +310,12 @@ class BotinApp(tb.Window):
         id_barrio = self.id_barrio_var_upd.get().strip()
 
         try:
-            with open("data/barrios.json", "r") as file:
+            with open("data/barrios/barrios.json", "r") as file:
                 barrios = json.load(file)
 
             barrios = [barrio for barrio in barrios if barrio["id"] != int(id_barrio)]
 
-            with open("data/barrios.json", "w") as file:
+            with open("data/barrios/barrios.json", "w") as file:
                 json.dump(barrios, file, indent=4)
 
             # Eliminar casas asociadas
@@ -443,132 +447,10 @@ class BotinApp(tb.Window):
 
         messagebox.showinfo("Éxito", f"Casa con ID {new_id} añadida al barrio {id_barrio}.")
 
+
+
     def show_simulation(self):
-        self.option_display.config(text="Simulación de Consumo de Agua")
-        for widget in self.option_display.winfo_children():
-            widget.destroy()
-
-        sim_frame = tk.Frame(self.option_display, bg="white")
-        sim_frame.pack(pady=10, fill="both", expand=True)
-
-        sim_config_frame = tk.LabelFrame(sim_frame, text="Configuración de Simulación", font=("Helvetica", 14),
-                                         fg="black", bg="white", relief="groove", bd=2)
-        sim_config_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew", ipadx=10, ipady=10)
-
-        tk.Label(sim_config_frame, text="Número de Iteraciones:", font=("Helvetica", 12)).grid(row=0, column=0, padx=5,
-                                                                                               pady=5)
-        self.iteraciones_var = tk.StringVar(value="100")
-        tk.Entry(sim_config_frame, textvariable=self.iteraciones_var, font=("Helvetica", 12)).grid(row=0, column=1,
-                                                                                                   padx=5, pady=5)
-
-        tk.Button(sim_config_frame, text="Ejecutar Simulación", font=("Helvetica", 12),
-                  command=self.run_simulation).grid(row=1, column=0, columnspan=2, pady=10)
-
-        self.results_text = tk.Text(self.option_display, font=("Helvetica", 12), height=10, width=80)
-        self.results_text.pack(pady=10)
-
-        self.simulation_details_frame = tk.LabelFrame(sim_frame, text="Detalles de Simulación", font=("Helvetica", 14),
-                                                      fg="black", bg="white", relief="groove", bd=2)
-        self.simulation_details_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew", ipadx=10, ipady=10)
-
-        tk.Label(self.simulation_details_frame, text="Seleccione el Barrio para Simulación:",
-                 font=("Helvetica", 12)).grid(
-            row=0, column=0, padx=5, pady=5)
-        self.barrio_var = tk.StringVar()
-        barrios = self.get_barrio_options()
-        self.barrio_menu = tk.OptionMenu(self.simulation_details_frame, self.barrio_var, *barrios)
-        self.barrio_menu.grid(row=0, column=1, padx=5, pady=5)
-
-        tk.Label(self.simulation_details_frame, text="Seleccione el Tanque para Simulación:",
-                 font=("Helvetica", 12)).grid(
-            row=1, column=0, padx=5, pady=5)
-        self.tanque_var = tk.StringVar()
-        tanques = self.get_tanque_options()
-        self.tanque_menu = tk.OptionMenu(self.simulation_details_frame, self.tanque_var, *tanques)
-        self.tanque_menu.grid(row=1, column=1, padx=5, pady=5)
-
-        self.simulation_output_frame = tk.LabelFrame(sim_frame, text="Resultados de la Simulación",
-                                                     font=("Helvetica", 14),
-                                                     fg="black", bg="white", relief="groove", bd=2)
-        self.simulation_output_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew", ipadx=10, ipady=10)
-
-        self.simulation_graph_canvas = tk.Canvas(self.simulation_output_frame, bg="lightgray")
-        self.simulation_graph_canvas.grid(row=0, column=0, padx=10, pady=10)
-
-        tk.Button(self.simulation_output_frame, text="Mostrar Grafo de Resultados", font=("Helvetica", 12),
-                  command=self.show_simulation_graph).grid(row=1, column=0, pady=10)
-
-    def run_simulation(self):
-        try:
-            iterations = int(self.iteraciones_var.get())
-            if iterations <= 0:
-                messagebox.showerror("Error", "El número de iteraciones debe ser mayor que cero.")
-                return
-
-            total_consumo = 0
-            for i in range(iterations):
-                total_consumo += 100
-
-            barrio_seleccionado = self.barrio_var.get()
-            tanque_seleccionado = self.tanque_var.get()
-
-            self.results_text.delete(1.0, tk.END)
-            self.results_text.insert(tk.END, f"Simulación ejecutada con {iterations} iteraciones.\n")
-            self.results_text.insert(tk.END, f"Consumo total de agua: {total_consumo} litros.\n")
-            self.results_text.insert(tk.END, f"Días simulados: {iterations} días.\n")
-            self.results_text.insert(tk.END, f"Barrio seleccionado: {barrio_seleccionado}\n")
-            self.results_text.insert(tk.END, f"Tanque seleccionado: {tanque_seleccionado}\n")
-
-            messagebox.showinfo("Simulación completada",
-                                f"Simulación ejecutada con éxito.\nConsumo total: {total_consumo} litros.\nBarrio: {barrio_seleccionado}\nTanque: {tanque_seleccionado}")
-
-        except ValueError:
-            messagebox.showerror("Error", "Por favor ingrese un número válido de iteraciones.")
-
-    def show_simulation_graph(self):
-        barrio_seleccionado = self.barrio_var.get()
-        tanque_seleccionado = self.tanque_var.get()
-
-        self.simulation_graph_canvas.delete("all")
-
-        barrio_x = 50
-        barrio_y = 50
-        tanque_x = 300
-        tanque_y = 50
-
-        self.simulation_graph_canvas.create_oval(barrio_x, barrio_y, barrio_x + 100, barrio_y + 100, fill="green")
-        self.simulation_graph_canvas.create_text(barrio_x + 50, barrio_y + 50, text=barrio_seleccionado, fill="white")
-
-        self.simulation_graph_canvas.create_oval(tanque_x, tanque_y, tanque_x + 100, tanque_y + 100, fill="blue")
-        self.simulation_graph_canvas.create_text(tanque_x + 50, tanque_y + 50, text=tanque_seleccionado, fill="white")
-
-        self.simulation_graph_canvas.create_line(barrio_x + 50, barrio_y + 100, tanque_x + 50, tanque_y, fill="blue",
-                                                 width=3)
-
-        self.simulation_graph_canvas.create_text((barrio_x + tanque_x) / 2, (barrio_y + tanque_y) / 2, text="Conexión",
-                                                 fill="blue")
-
-        self.simulation_graph_canvas.create_line(barrio_x + 50, barrio_y + 100, tanque_x + 50, tanque_y + 100,
-                                                 fill="blue", width=3)
-        self.simulation_graph_canvas.create_text((barrio_x + tanque_x) / 2, (barrio_y + tanque_y + 100) / 2,
-                                                 text="Conexión", fill="blue")
-
-    def get_barrio_options(self):
-        barrios = []
-        # Obtener barrios de la base de datos o de una lista predefinida
-        barrios.append("Barrio Central")
-        barrios.append("Barrio Norte")
-        barrios.append("Barrio Sur")
-        return barrios
-
-    def get_tanque_options(self):
-        tanques = []
-        # Obtener tanques de la base de datos o de una lista predefinida
-        tanques.append("Tanque 1")
-        tanques.append("Tanque 2")
-        tanques.append("Tanque 3")
-        return tanques
-
+       pass
 
 if __name__ == "__main__":
     app = BotinApp()

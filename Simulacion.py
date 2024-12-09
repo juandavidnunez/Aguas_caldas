@@ -1,151 +1,154 @@
-import networkx as nx
-import random
+import os
 import json
-import logging
-from collections import deque
+import tkinter as tk
+from tkinter import Canvas, Button, Frame, messagebox
+import networkx as nx
+from collections import defaultdict
 
 
-class Simulacion:
-    def __init__(self):
-        self.ciudad = nx.Graph()  # Grafo que representa la ciudad
-        self.barrios = {}
-        self.casasp = {}  # Diccionario de casas por barrio
-        self.tanques = {}  # Diccionario de tanques por barrio
-        self.consumo_total = 0
-        self.dias_simulados = 0
-        logging.basicConfig(level=logging.INFO)
+class CityWaterSimulation:
+    def __init__(self, root):
+        # Configuración de la ventana principal
+        self.root = root
+        self.root.title("Simulación de Sistema de Acueducto")
 
-    def agregar_barrio(self, barrio):
-        if barrio.id_barrio not in self.barrios:
-            self.barrios[barrio.id_barrio] = barrio
-            self.ciudad.add_node(barrio.id_barrio, tipo="barrio", nombre=barrio.nombre)
-            logging.info(f"Barrio {barrio.nombre} agregado al grafo de la ciudad.")
-        else:
-            logging.warning(f"El barrio {barrio.nombre} ya existe en la ciudad.")
+        # Marcos para diseño
+        self.main_frame = Frame(root)
+        self.main_frame.pack(fill="both", expand=True)
 
-    def conectar_barrios(self, barrio1, barrio2, distancia):
-        if barrio1.id_barrio in self.barrios and barrio2.id_barrio in self.barrios:
-            self.ciudad.add_edge(barrio1.id_barrio, barrio2.id_barrio, distancia=distancia)
-            logging.info(
-                f"Conexión establecida entre {barrio1.nombre} y {barrio2.nombre} con una distancia de {distancia} km.")
-        else:
-            logging.warning("Uno o ambos barrios no existen en la ciudad.")
+        self.canvas = Canvas(self.main_frame, bg="white")
+        self.canvas.pack(side="left", expand=True, fill="both")
 
-    def agregar_casa(self, casa, barrio):
-        if barrio.id_barrio in self.barrios:
-            self.casasp.setdefault(barrio.id_barrio, []).append(casa)
-            self.ciudad.add_node(casa.id, tipo="casa", nombre=casa.nombre, barrio=barrio.id_barrio)
-            self.ciudad.add_edge(barrio.id_barrio, casa.id, tipo="conexión casa")
-            barrio.agregar_casa(casa)
-            logging.info(f"Casa {casa.nombre} agregada al barrio {barrio.nombre}.")
-        else:
-            logging.warning(f"El barrio {barrio.nombre} no existe. No se puede agregar la casa.")
+        self.button_frame = Frame(self.main_frame)
+        self.button_frame.pack(side="right", fill="y")
 
-    def agregar_tanque(self, tanque, barrio):
-        if barrio.id_barrio in self.barrios:
-            self.tanques.setdefault(barrio.id_barrio, []).append(tanque)
-            self.ciudad.add_node(tanque.id, tipo="tanque", nombre=tanque.nombre, barrio=barrio.id_barrio,
-                                 capacidad=tanque.capacidad)
-            self.ciudad.add_edge(barrio.id_barrio, tanque.id, tipo="conexión tanque")
-            barrio.agregar_tanque(tanque)
-            logging.info(f"Tanque {tanque.nombre} agregado al barrio {barrio.nombre}.")
-        else:
-            logging.warning(f"El barrio {barrio.nombre} no existe. No se puede agregar el tanque.")
+        # Botones de control
+        Button(self.button_frame, text="Bloquear Arista", command=self.block_random_edge).pack(pady=5)
+        Button(self.button_frame, text="Recalcular Suministro", command=self.recalculate_flow).pack(pady=5)
+        Button(self.button_frame, text="Salir", command=self.root.quit).pack(pady=5)
 
-    def simular_consumo(self, dias):
-        total_consumo = 0
-        self.dias_simulados += dias
-        logging.info(f"Iniciando simulación de consumo de agua para {dias} días.")
+        # Cargar datos
+        self.houses = self.load_data("data/casas/casas.json")
+        self.districts = self.load_data("data/barrios/barrios.json")
+        self.tanks = self.load_data("data/tanques/tanques.json")
 
-        for barrio in self.barrios.values():
-            for casa in barrio.casas:
-                consumo = casa.simular_consumo(dias)
-                total_consumo += consumo
-                self.consumo_total += consumo
-            for tanque in barrio.tanques:
-                if tanque.estado != "activo":
-                    logging.warning(f"El tanque {tanque.nombre} está inactivo, no puede abastecer.")
-                else:
-                    agua_disponible = tanque.nivel_agua - total_consumo
-                    if agua_disponible < 0:
-                        logging.warning(
-                            f"El tanque {tanque.nombre} no tiene suficiente agua para satisfacer la demanda.")
-                    else:
-                        tanque.nivel_agua -= total_consumo
-                        logging.info(f"El tanque {tanque.nombre} ha distribuido agua para {total_consumo} litros.")
+        # Configuración inicial del grafo
+        self.city_graph = nx.Graph()
+        self.house_nodes = set()
+        self.tank_nodes = set()
+        self.blocked_edges = set()
+        self.capacity_usage = defaultdict(int)
 
-        logging.info(f"Simulación completada. Total consumo en {dias} días: {total_consumo} litros.")
+        # Crear grafo de la ciudad
+        self.build_city_graph()
+        self.draw_graph()
 
-    def simular_fallos(self):
-        logging.info("Simulando fallos en tanques y casas.")
-        for barrio in self.barrios.values():
-            for tanque in barrio.tanques:
-                if random.random() < 0.1:  # 10% de probabilidad de fallo
-                    tanque.estado = "inactivo"
-                    logging.warning(f"El tanque {tanque.nombre} en el barrio {barrio.nombre} ha fallado.")
-            for casa in barrio.casas:
-                if random.random() < 0.05:  # 5% de probabilidad de fallo
-                    casa.estado = "sin_servicio"
-                    logging.warning(f"La casa {casa.nombre} en el barrio {barrio.nombre} ha fallado y no tiene agua.")
+        # Evento para redimensionar
+        self.root.bind("<Configure>", lambda event: self.draw_graph())
 
-    def simular_direccion_agua(self):
-        logging.info("Simulando distribución de agua en la ciudad.")
-        for barrio in self.barrios.values():
-            for casa in barrio.casas:
-                if casa.estado == "sin_servicio":
-                    logging.warning(f"La casa {casa.nombre} no está recibiendo agua debido a un fallo.")
-                else:
-                    # Simular que la casa recibe agua de los tanques más cercanos
-                    tanques_cercanos = self.obtener_tanques_cercanos(barrio)
-                    for tanque in tanques_cercanos:
-                        if tanque.estado == "activo":
-                            logging.info(
-                                f"La casa {casa.nombre} en el barrio {barrio.nombre} recibe agua del tanque {tanque.nombre}.")
-                            break
+    @staticmethod
+    def load_data(filepath):
+        """Carga datos desde un archivo JSON."""
+        if not os.path.exists(filepath):
+            return []
+        with open(filepath, 'r') as file:
+            return json.load(file)
 
-    def obtener_tanques_cercanos(self, barrio):
-        # Obtener tanques cercanos dentro del grafo (esto podría mejorar usando una heurística de distancia)
-        vecinos = list(self.ciudad.neighbors(barrio.id_barrio))
-        tanques_cercanos = []
-        for vecino in vecinos:
-            if self.ciudad.nodes[vecino]["tipo"] == "tanque":
-                tanque = next(t for t in barrio.tanques if t.id == vecino)
-                tanques_cercanos.append(tanque)
-        return tanques_cercanos
+    def build_city_graph(self):
+        """Construir el grafo de la ciudad con casas, tanques y barrios."""
+        for house in self.houses:
+            house_id = house["id"]
+            district_id = house["barrio_id"]
+            self.city_graph.add_node(house_id, type="house", district=district_id)
+            self.house_nodes.add(house_id)
 
-    def mostrar_red(self):
-        logging.info("Mostrando la red de la ciudad:")
-        for barrio in self.barrios.values():
-            logging.info(
-                f"Barrio {barrio.nombre} tiene casas: {[casa.nombre for casa in barrio.casas]} y tanques: {[tanque.nombre for tanque in barrio.tanques]}.")
+        for tank in self.tanks:
+            tank_id = tank["id"]
+            self.city_graph.add_node(tank_id, type="tank", capacity=int(tank["capacidad"]),
+                                     pressure=int(tank["presion"]))
+            self.tank_nodes.add(tank_id)
 
-    def simular_mantenimiento(self):
-        for barrio in self.barrios.values():
-            for tanque in barrio.tanques:
-                if random.random() < 0.1:  # 10% probabilidad de que un tanque necesite mantenimiento
-                    tanque.estado = "en_mantenimiento"
-                    logging.info(f"El tanque {tanque.nombre} en el barrio {barrio.nombre} está en mantenimiento.")
+        for district in self.districts:
+            district_id = district["id"]
+            houses_in_district = [h["id"] for h in self.houses if h["barrio_id"] == district_id]
+            self.city_graph.add_nodes_from(houses_in_district, type='house', district=district_id)
 
-    def ejecutar_simulacion(self, dias):
-        self.simular_consumo(dias)
-        self.simular_fallos()
-        self.simular_direccion_agua()
-        self.simular_mantenimiento()
+            # Conectar casas como árbol balanceado
+            self.build_balanced_tree(houses_in_district)
 
-    def obtener_consumo_total(self):
-        return self.consumo_total
+            # Conectar tanque al nodo más cercano del barrio
+            if "tanque_id" in district and district["tanque_id"] in self.tank_nodes:
+                tank_id = district["tanque_id"]
+                nearest_house = self.get_nearest_house(houses_in_district, tank_id)
+                if nearest_house:
+                    self.city_graph.add_edge(nearest_house, tank_id, status="functional")
 
-    def obtener_dias_simulados(self):
-        return self.dias_simulados
+    def build_balanced_tree(self, houses):
+        """Construye un árbol balanceado a partir de una lista de casas."""
+        if not houses:
+            return
 
-    def generar_informacion_resumen(self):
-        resumen = {
-            "dias_simulados": self.dias_simulados,
-            "consumo_total": self.consumo_total,
-            "barrios": {barrio.nombre: barrio.generar_informacion_resumen() for barrio in self.barrios.values()}
-        }
-        return resumen
+        mid = len(houses) // 2
+        for i in range(1, len(houses)):
+            parent = houses[(i - 1) // 2]
+            child = houses[i]
+            self.city_graph.add_edge(parent, child, status="functional")
 
-    def exportar_a_json(self):
-        return json.dumps(self.generar_informacion_resumen(), indent=4)
+    def get_nearest_house(self, houses, tank_id):
+        """Encuentra la casa más cercana a un tanque."""
+        return min(houses, key=lambda h: abs(h - tank_id)) if houses else None
 
+    def draw_graph(self):
+        """Dibuja el grafo en el canvas."""
+        self.canvas.delete("all")
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
+
+        # Calcular posiciones del grafo
+        pos = nx.spring_layout(self.city_graph, center=(width / 2, height / 2), scale=min(width, height) / 2.5)
+
+        for node, data in self.city_graph.nodes(data=True):
+            x, y = pos[node]
+            color = "blue" if data["type"] == "tank" else "green"
+            self.canvas.create_oval(x - 10, y - 10, x + 10, y + 10, fill=color, tags=f"node_{node}")
+            self.canvas.create_text(x, y - 15, text=str(node), font=("Arial", 8), tags=f"label_{node}")
+
+        for u, v, edge_data in self.city_graph.edges(data=True):
+            x1, y1 = pos[u]
+            x2, y2 = pos[v]
+            color = "blue" if edge_data["status"] == "functional" else "red"
+            self.canvas.create_line(x1, y1, x2, y2, fill=color, tags=f"edge_{u}-{v}")
+
+    def block_random_edge(self):
+        """Bloquea una arista funcional al azar."""
+        edges = [e for e in self.city_graph.edges if self.city_graph.edges[e]["status"] == "functional"]
+        if edges:
+            edge_to_block = edges[0]
+            self.city_graph.edges[edge_to_block]["status"] = "blocked"
+            self.blocked_edges.add(edge_to_block)
+            self.draw_graph()
+
+    def recalculate_flow(self):
+        """Recalcula el suministro de agua y actualiza los colores."""
+        for house in self.house_nodes:
+            if not self.check_water_supply(house):
+                self.canvas.itemconfig(f"node_{house}", fill="red")
+            else:
+                self.canvas.itemconfig(f"node_{house}", fill="green")
+
+    def check_water_supply(self, house_id):
+        """Verifica si una casa tiene suministro de agua."""
+        for tank in self.tank_nodes:
+            try:
+                path = nx.shortest_path(self.city_graph, source=tank, target=house_id)
+                if all(self.city_graph.edges[edge]["status"] == "functional" for edge in zip(path, path[1:])):
+                    return True
+            except nx.NetworkXNoPath:
+                continue
+        return False
+
+
+# Configuración inicial
+root = tk.Tk()
+simulation = CityWaterSimulation(root)
+root.mainloop()
