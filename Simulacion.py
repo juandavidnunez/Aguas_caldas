@@ -5,27 +5,37 @@ from tkinter import Canvas, Button, Frame, messagebox
 import networkx as nx
 from collections import defaultdict
 
-
-class CityWaterSimulation:
+class ImprovedCityWaterSimulation:
     def __init__(self, root):
         # Configuración de la ventana principal
         self.root = root
-        self.root.title("Simulación de Sistema de Acueducto")
+        self.root.title("Simulación Mejorada de Sistema de Acueducto")
+        self.root.geometry("1200x800")
 
-        # Marcos para diseño
+        # Marcos principales para diseño
         self.main_frame = Frame(root)
         self.main_frame.pack(fill="both", expand=True)
 
-        self.canvas = Canvas(self.main_frame, bg="white")
+        self.canvas = Canvas(self.main_frame, bg="#f0f0f0")
         self.canvas.pack(side="left", expand=True, fill="both")
 
-        self.button_frame = Frame(self.main_frame)
-        self.button_frame.pack(side="right", fill="y")
+        self.control_frame = Frame(self.main_frame, bg="#404040")
+        self.control_frame.pack(side="right", fill="y")
 
-        # Botones de control
-        Button(self.button_frame, text="Bloquear Arista", command=self.block_random_edge).pack(pady=5)
-        Button(self.button_frame, text="Recalcular Suministro", command=self.recalculate_flow).pack(pady=5)
-        Button(self.button_frame, text="Salir", command=self.root.quit).pack(pady=5)
+        # Colores y fuentes
+        self.colors = {
+            "house": "#32a852",
+            "tank": "#3298a8",
+            "blocked_edge": "#ff5e5e",
+            "functional_edge": "#5e9cff",
+        }
+        self.font = ("Arial", 10)  # Definir la fuente antes de usarla
+
+        # Botones de control estilizados
+        self.create_styled_button("Bloquear Arista", self.block_random_edge)
+        self.create_styled_button("Recalcular Flujo", self.recalculate_flow)
+        self.create_styled_button("Mostrar Alertas", self.show_alerts)
+        self.create_styled_button("Salir", self.root.quit)
 
         # Cargar datos
         self.houses = self.load_data("data/casas/casas.json")
@@ -37,14 +47,26 @@ class CityWaterSimulation:
         self.house_nodes = set()
         self.tank_nodes = set()
         self.blocked_edges = set()
-        self.capacity_usage = defaultdict(int)
+        self.alerts = []
 
-        # Crear grafo de la ciudad
+        # Construir el grafo de la ciudad
         self.build_city_graph()
         self.draw_graph()
 
-        # Evento para redimensionar
+        # Redibujar el grafo al redimensionar la ventana
         self.root.bind("<Configure>", lambda event: self.draw_graph())
+
+    def create_styled_button(self, text, command):
+        """Crea un botón estilizado."""
+        Button(
+            self.control_frame,
+            text=text,
+            command=command,
+            bg="#505050",
+            fg="white",
+            font=self.font,
+            activebackground="#707070"
+        ).pack(pady=10, padx=20, fill="x")
 
     @staticmethod
     def load_data(filepath):
@@ -88,7 +110,6 @@ class CityWaterSimulation:
         if not houses:
             return
 
-        mid = len(houses) // 2
         for i in range(1, len(houses)):
             parent = houses[(i - 1) // 2]
             child = houses[i]
@@ -104,19 +125,18 @@ class CityWaterSimulation:
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
 
-        # Calcular posiciones del grafo
         pos = nx.spring_layout(self.city_graph, center=(width / 2, height / 2), scale=min(width, height) / 2.5)
 
         for node, data in self.city_graph.nodes(data=True):
             x, y = pos[node]
-            color = "blue" if data["type"] == "tank" else "green"
+            color = self.colors["tank"] if data["type"] == "tank" else self.colors["house"]
             self.canvas.create_oval(x - 10, y - 10, x + 10, y + 10, fill=color, tags=f"node_{node}")
-            self.canvas.create_text(x, y - 15, text=str(node), font=("Arial", 8), tags=f"label_{node}")
+            self.canvas.create_text(x, y - 15, text=str(node), font=self.font, tags=f"label_{node}")
 
         for u, v, edge_data in self.city_graph.edges(data=True):
             x1, y1 = pos[u]
             x2, y2 = pos[v]
-            color = "blue" if edge_data["status"] == "functional" else "red"
+            color = self.colors["functional_edge"] if edge_data["status"] == "functional" else self.colors["blocked_edge"]
             self.canvas.create_line(x1, y1, x2, y2, fill=color, tags=f"edge_{u}-{v}")
 
     def block_random_edge(self):
@@ -126,15 +146,18 @@ class CityWaterSimulation:
             edge_to_block = edges[0]
             self.city_graph.edges[edge_to_block]["status"] = "blocked"
             self.blocked_edges.add(edge_to_block)
+            self.alerts.append(f"Se bloqueó la arista {edge_to_block}.")
             self.draw_graph()
 
     def recalculate_flow(self):
         """Recalcula el suministro de agua y actualiza los colores."""
+        disconnected = []
         for house in self.house_nodes:
             if not self.check_water_supply(house):
-                self.canvas.itemconfig(f"node_{house}", fill="red")
-            else:
-                self.canvas.itemconfig(f"node_{house}", fill="green")
+                disconnected.append(house)
+        if disconnected:
+            self.alerts.append(f"Casas desconectadas: {', '.join(map(str, disconnected))}.")
+        self.draw_graph()
 
     def check_water_supply(self, house_id):
         """Verifica si una casa tiene suministro de agua."""
@@ -147,8 +170,15 @@ class CityWaterSimulation:
                 continue
         return False
 
+    def show_alerts(self):
+        """Muestra las alertas acumuladas."""
+        if not self.alerts:
+            messagebox.showinfo("Alertas", "No hay alertas en este momento.")
+        else:
+            messagebox.showinfo("Alertas", "\n".join(self.alerts))
+            self.alerts = []
 
 # Configuración inicial
 root = tk.Tk()
-simulation = CityWaterSimulation(root)
+simulation = ImprovedCityWaterSimulation(root)
 root.mainloop()
